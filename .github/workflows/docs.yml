@@ -1,0 +1,24 @@
+name: Build Docs
+
+on:
+    push:
+        tags:
+            - '*'
+
+    workflow_dispatch:
+
+jobs:
+    docs:
+        runs-on: preymaker-dataops
+        steps:
+            -   name: Checkout Repository
+                uses: actions/checkout@v5
+            -   name: Trigger Remote Build
+                run: >
+                    sudo wiz-package-builder-remote-build sphinxbuild-rocky8-x86_64
+                    -i repoPath "$GITHUB_WORKSPACE"
+                    -i repoVersion $(if [[ $GITHUB_REF_NAME == 'main' ]]; then echo "latest"; else echo $GITHUB_REF_NAME; fi)
+                    -i pyver "3.11.*"
+                    --user "$GITHUB_ACTOR"
+                    --release-to-production
+                    --release-group "void-model-$(if [[ $GITHUB_REF_NAME == 'main' ]]; then echo "latest"; else echo $GITHUB_REF_NAME; fi)"

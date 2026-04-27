@@ -1,0 +1,52 @@
+[tool.poetry]
+name = "void-model"
+version = "0.1.0"
+description = "netflix void model "
+packages = [
+    {include = "void_model", from = "src", format = "sdist"}
+]
+authors = ["Preymaker"]
+readme = "README.rst"
+homepage = "https://github.com/Preymaker/void-model"
+classifiers = [
+    "Programming Language :: Python",
+    "Operating System :: OS Independent",
+]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+click = "^7.1.2"
+
+[tool.poetry.group.dev.dependencies]
+sphinx = "^4.5.0"
+sphinx-click = "^4.0.3"
+sphinx-rtd-theme = "^1.0.0"
+sphinxcontrib-applehelp = "<1.0.8"
+sphinxcontrib-devhelp = "<1.0.6"
+sphinxcontrib-htmlhelp = "<2.0.5"
+sphinxcontrib-serializinghtml = "<1.1.10"
+sphinxcontrib-jsmath = "<1.0.1"
+sphinxcontrib-qthelp = "<1.0.7"
+sphinxcontrib-jquery = "<4.1"
+lowdown = "^0.2.1"
+pytest = "^6.2.0"
+pytest-mock = "^1.2.0"
+pytest-xdist = "^2.5.0"
+pytest-runner = "^6.0.0"
+pytest-cov = "^3.0.0"
+pytest-catchlog = "^1.2.2"
+
+[[tool.poetry.source]]
+name = "preymaker"
+url = "http://devpi.preymaker.com:4040/preymaker/dev/+simple/"
+priority = "primary"
+
+[tool.poetry.scripts]
+void-model = 'void_model.__main__:main'
+
+[tool.pytest.ini_options]
+testpaths = ["test"]
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"

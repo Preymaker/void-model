@@ -1,0 +1,24 @@
+{
+    "commit": {
+        "mainbranch": "main"
+    },
+    "files": {
+        "pyproject.toml": [
+            ["version = \"([\\d\\.]+)\"",
+             "version = \"[version]\""]
+        ],
+        "src/void_model/_version.py": [
+            ["__version__ = \"([\\d\\.]+)\"",
+             "__version__ = \"[version]\""]
+        ],
+        "doc/release/release_notes.rst": [
+            [
+                ".. release:: Upcoming",
+                ".. release:: [version]\n    :date: [version_date]"
+            ]
+        ]
+    },
+    "changelog": {
+        "enabled": false
+    }
+}

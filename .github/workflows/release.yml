@@ -1,0 +1,28 @@
+name: Release
+
+on:
+    push:
+        tags:
+            - '*'
+
+    workflow_dispatch:
+
+jobs:
+    release:
+        runs-on: preymaker-dataops
+        steps:
+            -   name: Checkout Repository
+                uses: actions/checkout@v5
+            -   name: Devpi Upload
+                run: |
+                    poetry-env-use-3.11
+                    poetry-3.11 publish -r preymaker --build
+            -   name: Trigger Remote Build
+                run: >
+                    sudo wiz-package-builder-remote-build pypkg-rocky8-x86_64
+                    -i package "void-model"
+                    -i version $(if [[ $GITHUB_REF_NAME == 'main' ]]; then echo "latest"; else echo $GITHUB_REF_NAME; fi)
+                    -i pyver "3.11.*"
+                    --user "$GITHUB_ACTOR"
+                    --release-to-production
+                    --release-group "void-model-$(if [[ $GITHUB_REF_NAME == 'main' ]]; then echo "latest"; else echo $GITHUB_REF_NAME; fi)"
