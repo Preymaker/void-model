@@ -1,0 +1,61 @@
+{
+  "total_objects": 9,
+  "scaling_factor": 50,
+  "note": "Pixel values in find.png are scaled by 50x for visibility. Object 1 = value 50, Object 2 = value 100, etc.",
+  "objects": [
+    {
+      "id": 1,
+      "noun": "trampoline",
+      "description": "The main rectangular trampoline with a blue padded frame and white mesh bed in the foreground.",
+      "pixel_count": 389175
+    },
+    {
+      "id": 2,
+      "noun": "mat",
+      "description": "A blue rectangular mat lying flat on the trampoline frame on the left side.",
+      "pixel_count": 1660139
+    },
+    {
+      "id": 3,
+      "noun": "mat",
+      "description": "A large, thick blue mat standing vertically against the wall in the background.",
+      "pixel_count": 1660139
+    },
+    {
+      "id": 4,
+      "noun": "mat",
+      "description": "Another large, thick blue mat standing vertically against the wall on the left.",
+      "pixel_count": 1660139
+    },
+    {
+      "id": 5,
+      "noun": "mat",
+      "description": "A folded red and yellow mat placed on the right side of the trampoline area.",
+      "pixel_count": 1660139
+    },
+    {
+      "id": 6,
+      "noun": "mat",
+      "description": "A stack of dark green/grey mats piled up in the background.",
+      "pixel_count": 1660139
+    },
+    {
+      "id": 7,
+      "noun": "door",
+      "description": "A wooden door visible on the left side of the room.",
+      "pixel_count": 36410
+    },
+    {
+      "id": 8,
+      "noun": "mat",
+      "description": "A blue mat placed on top of the trampoline frame in the background.",
+      "pixel_count": 1660139
+    },
+    {
+      "id": 9,
+      "noun": "mat",
+      "description": "A red mat visible on the floor to the left.",
+      "pixel_count": 1660139
+    }
+  ]
+}
