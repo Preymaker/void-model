@@ -95,6 +95,12 @@ ENV/
 # Caches
 Thumbs.db
 
+# Smoke test outputs (generated videos/npy files)
+sample/*/smoke_test_out/
+void_outputs_quadmask/
+void_outputs_pass2/
+pass1_warped_noise_cache/
+
 # Development
 .project
 .pydevproject

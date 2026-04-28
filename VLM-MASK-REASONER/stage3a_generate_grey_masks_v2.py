@@ -34,20 +34,19 @@ Usage:
     python stage3a_generate_grey_masks_v2.py --config more_dyn_2_config_points_absolute.json
 """
 
-import os
-import sys
 import json
 import argparse
 import cv2
 import numpy as np
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple
 from PIL import Image
 import subprocess
 
 # SAM2 for video tracking
 try:
     from sam2.build_sam import build_sam2_video_predictor
+
     SAM2_AVAILABLE = True
 except ImportError:
     SAM2_AVAILABLE = False
@@ -56,6 +55,7 @@ except ImportError:
 try:
     from sam3.model_builder import build_sam3_image_model
     from sam3.model.sam3_image_processor import Sam3Processor
+
     SAM3_AVAILABLE = True
 except ImportError:
     SAM3_AVAILABLE = False
@@ -63,6 +63,7 @@ except ImportError:
 # LangSAM
 try:
     from lang_sam import LangSAM
+
     LANGSAM_AVAILABLE = True
 except ImportError:
     LANGSAM_AVAILABLE = False
@@ -77,14 +78,25 @@ class SegmentationModel:
         if self.model_type == "sam3":
             if not SAM3_AVAILABLE:
                 raise ImportError("SAM3 not available")
-            print(f"   Loading SAM3...")
-            model = build_sam3_image_model()
+            print("   Loading SAM3...")
+            # Resolve checkpoint from HF cache without triggering a download.
+            # HF_HOME must point to the shared cache (set in environment).
+            from huggingface_hub import hf_hub_download
+
+            checkpoint_path = hf_hub_download(
+                repo_id="facebook/sam3",
+                filename="sam3.pt",
+                local_files_only=True,
+            )
+            model = build_sam3_image_model(
+                load_from_HF=False, checkpoint_path=checkpoint_path
+            )
             self.processor = Sam3Processor(model)
             self.model = model
         elif self.model_type == "langsam":
             if not LANGSAM_AVAILABLE:
                 raise ImportError("LangSAM not available")
-            print(f"   Loading LangSAM...")
+            print("   Loading LangSAM...")
             self.model = LangSAM()
         else:
             raise ValueError(f"Unknown model: {model_type}")
@@ -98,12 +110,15 @@ class SegmentationModel:
 
     def _segment_sam3(self, image_pil: Image.Image, prompt: str) -> np.ndarray:
         import torch
+
         h, w = image_pil.height, image_pil.width
         union = np.zeros((h, w), dtype=bool)
 
         try:
             inference_state = self.processor.set_image(image_pil)
-            output = self.processor.set_text_prompt(state=inference_state, prompt=prompt)
+            output = self.processor.set_text_prompt(
+                state=inference_state, prompt=prompt
+            )
             masks = output.get("masks")
 
             if masks is None or len(masks) == 0:
@@ -149,7 +164,9 @@ class SegmentationModel:
         return union
 
 
-def calculate_square_grid(width: int, height: int, min_grid: int = 8) -> Tuple[int, int]:
+def calculate_square_grid(
+    width: int, height: int, min_grid: int = 8
+) -> Tuple[int, int]:
     """Calculate grid dimensions for square cells"""
     aspect_ratio = width / height
     if width >= height:
@@ -161,7 +178,9 @@ def calculate_square_grid(width: int, height: int, min_grid: int = 8) -> Tuple[i
     return grid_rows, grid_cols
 
 
-def gridify_masks(masks: List[np.ndarray], grid_rows: int, grid_cols: int) -> List[np.ndarray]:
+def gridify_masks(
+    masks: List[np.ndarray], grid_rows: int, grid_cols: int
+) -> List[np.ndarray]:
     """
     Gridify masks: if ANY pixel in grid cell → ENTIRE cell = True
 
@@ -215,8 +234,12 @@ def get_object_size(mask: np.ndarray) -> Tuple[int, int]:
     return width, height
 
 
-def apply_object_along_trajectory(obj_mask: np.ndarray, trajectory_points: List[Tuple[int, int]],
-                                   total_frames: int, frame_shape: Tuple[int, int]) -> List[np.ndarray]:
+def apply_object_along_trajectory(
+    obj_mask: np.ndarray,
+    trajectory_points: List[Tuple[int, int]],
+    total_frames: int,
+    frame_shape: Tuple[int, int],
+) -> List[np.ndarray]:
     """
     Apply object along trajectory path across frames.
 
@@ -265,8 +288,9 @@ def apply_object_along_trajectory(obj_mask: np.ndarray, trajectory_points: List[
     return masks
 
 
-def segment_object_all_frames(video_path: str, obj_noun: str, segmenter: SegmentationModel,
-                               frame_stride: int = 1) -> List[np.ndarray]:
+def segment_object_all_frames(
+    video_path: str, obj_noun: str, segmenter: SegmentationModel, frame_stride: int = 1
+) -> List[np.ndarray]:
     """
     Segment object through all frames.
 
@@ -300,7 +324,7 @@ def segment_object_all_frames(video_path: str, obj_noun: str, segmenter: Segment
             masks.append(mask)
 
             if (frame_idx + 1) % 10 == 0:
-                print(f"         Frame {frame_idx + 1}/{total_frames}...", end='\r')
+                print(f"         Frame {frame_idx + 1}/{total_frames}...", end="\r")
         else:
             # Reuse previous mask
             if masks:
@@ -322,8 +346,9 @@ def dilate_mask(mask: np.ndarray, kernel_size: int = 15) -> np.ndarray:
     return cv2.dilate(mask.astype(np.uint8), kernel, iterations=1).astype(bool)
 
 
-def filter_masks_by_proximity(masks: List[np.ndarray], primary_mask: np.ndarray,
-                               dilation: int = 50) -> List[np.ndarray]:
+def filter_masks_by_proximity(
+    masks: List[np.ndarray], primary_mask: np.ndarray, dilation: int = 50
+) -> List[np.ndarray]:
     """Filter masks to only include regions near primary mask"""
     proximity_region = dilate_mask(primary_mask, dilation)
 
@@ -335,14 +360,15 @@ def filter_masks_by_proximity(masks: List[np.ndarray], primary_mask: np.ndarray,
     return filtered
 
 
-def process_video_grey_masks(video_info: Dict, segmenter: SegmentationModel,
-                              trajectory_data: List[Dict] = None):
+def process_video_grey_masks(
+    video_info: Dict, segmenter: SegmentationModel, trajectory_data: List[Dict] = None
+):
     """Generate grey masks for a single video"""
     video_path = video_info.get("video_path", "")
     output_dir = Path(video_info.get("output_dir", ""))
 
     if not output_dir.exists():
-        print(f"   ⚠️  Output directory not found")
+        print("   ⚠️  Output directory not found")
         return
 
     # Load required files
@@ -351,18 +377,18 @@ def process_video_grey_masks(video_info: Dict, segmenter: SegmentationModel,
     input_video_path = output_dir / "input_video.mp4"
 
     if not vlm_analysis_path.exists():
-        print(f"   ⚠️  vlm_analysis.json not found")
+        print("   ⚠️  vlm_analysis.json not found")
         return
 
     if not black_mask_path.exists():
-        print(f"   ⚠️  black_mask.mp4 not found")
+        print("   ⚠️  black_mask.mp4 not found")
         return
 
     if not input_video_path.exists():
         input_video_path = Path(video_path)
 
     # Load VLM analysis
-    with open(vlm_analysis_path, 'r') as f:
+    with open(vlm_analysis_path, "r") as f:
         analysis = json.load(f)
 
     # Get video properties
@@ -374,10 +400,12 @@ def process_video_grey_masks(video_info: Dict, segmenter: SegmentationModel,
     cap.release()
 
     # Calculate grid
-    min_grid = video_info.get('min_grid', 8)
+    min_grid = video_info.get("min_grid", 8)
     grid_rows, grid_cols = calculate_square_grid(frame_width, frame_height, min_grid)
 
-    print(f"   Video: {frame_width}x{frame_height}, {total_frames} frames, grid: {grid_rows}x{grid_cols}")
+    print(
+        f"   Video: {frame_width}x{frame_height}, {total_frames} frames, grid: {grid_rows}x{grid_cols}"
+    )
 
     # Load black mask (first frame for proximity filtering)
     black_cap = cv2.VideoCapture(str(black_mask_path))
@@ -387,17 +415,19 @@ def process_video_grey_masks(video_info: Dict, segmenter: SegmentationModel,
     if len(black_mask_frame.shape) == 3:
         black_mask_frame = cv2.cvtColor(black_mask_frame, cv2.COLOR_BGR2GRAY)
 
-    primary_mask = (black_mask_frame == 0)  # 0 = primary object
+    primary_mask = black_mask_frame == 0  # 0 = primary object
 
     # Initialize accumulated masks (one per frame)
-    accumulated_masks = [np.zeros((frame_height, frame_width), dtype=bool) for _ in range(total_frames)]
+    accumulated_masks = [
+        np.zeros((frame_height, frame_width), dtype=bool) for _ in range(total_frames)
+    ]
 
     # Process affected objects
-    affected_objects = analysis.get('affected_objects', [])
+    affected_objects = analysis.get("affected_objects", [])
     print(f"   Processing {len(affected_objects)} affected object(s)...")
 
     for obj in affected_objects:
-        noun = obj.get('noun', '')
+        noun = obj.get("noun", "")
 
         if not noun:
             continue
@@ -408,14 +438,18 @@ def process_video_grey_masks(video_info: Dict, segmenter: SegmentationModel,
         has_trajectory = False
         if trajectory_data:
             for traj in trajectory_data:
-                if traj.get('object_noun', '') == noun and not traj.get('skipped', False):
+                if traj.get("object_noun", "") == noun and not traj.get(
+                    "skipped", False
+                ):
                     has_trajectory = True
-                    traj_points = traj.get('trajectory_points', [])
+                    traj_points = traj.get("trajectory_points", [])
 
-                    print(f"         Using user-drawn trajectory ({len(traj_points)} points)")
+                    print(
+                        f"         Using user-drawn trajectory ({len(traj_points)} points)"
+                    )
 
                     # Segment object in first_appears_frame to get SIZE
-                    first_frame_idx = obj.get('first_appears_frame', 0)
+                    first_frame_idx = obj.get("first_appears_frame", 0)
                     cap = cv2.VideoCapture(str(input_video_path))
                     cap.set(cv2.CAP_PROP_POS_FRAMES, first_frame_idx)
                     ret, frame = cap.read()
@@ -428,22 +462,31 @@ def process_video_grey_masks(video_info: Dict, segmenter: SegmentationModel,
 
                         if obj_mask.any():
                             obj_width, obj_height = get_object_size(obj_mask)
-                            print(f"         Segmented object (size: {obj_width}x{obj_height} px)")
+                            print(
+                                f"         Segmented object (size: {obj_width}x{obj_height} px)"
+                            )
 
                             # Apply object SIZE along trajectory
                             traj_masks = apply_object_along_trajectory(
-                                obj_mask, traj_points, total_frames, (frame_height, frame_width)
+                                obj_mask,
+                                traj_points,
+                                total_frames,
+                                (frame_height, frame_width),
                             )
 
                             # Accumulate
                             for i in range(total_frames):
                                 accumulated_masks[i] |= traj_masks[i]
 
-                            print(f"         ✓ Applied object along trajectory across {total_frames} frames")
+                            print(
+                                f"         ✓ Applied object along trajectory across {total_frames} frames"
+                            )
                         else:
-                            print(f"         ⚠️  Segmentation failed, using trajectory grid cells only")
+                            print(
+                                "         ⚠️  Segmentation failed, using trajectory grid cells only"
+                            )
                             # Fallback: just use trajectory grid cells
-                            grid_cells = traj.get('trajectory_grid_cells', [])
+                            grid_cells = traj.get("trajectory_grid_cells", [])
                             for row, col in grid_cells:
                                 y1 = int(row * frame_height / grid_rows)
                                 y2 = int((row + 1) * frame_height / grid_rows)
@@ -457,11 +500,17 @@ def process_video_grey_masks(video_info: Dict, segmenter: SegmentationModel,
         # If NO user trajectory, segment through ALL frames
         # This captures: static objects, objects that move during video, dynamic effects
         if not has_trajectory:
-            print(f"         Segmenting through ALL frames (captures any movement/changes)...")
-            obj_masks = segment_object_all_frames(str(input_video_path), noun, segmenter, frame_stride=5)
+            print(
+                "         Segmenting through ALL frames (captures any movement/changes)..."
+            )
+            obj_masks = segment_object_all_frames(
+                str(input_video_path), noun, segmenter, frame_stride=5
+            )
 
             # Filter by proximity to primary mask
-            obj_masks_filtered = filter_masks_by_proximity(obj_masks, primary_mask, dilation=50)
+            obj_masks_filtered = filter_masks_by_proximity(
+                obj_masks, primary_mask, dilation=50
+            )
 
             # Accumulate
             for i in range(len(obj_masks_filtered)):
@@ -469,20 +518,26 @@ def process_video_grey_masks(video_info: Dict, segmenter: SegmentationModel,
                     accumulated_masks[i] |= obj_masks_filtered[i]
 
             pixel_count = sum(mask.sum() for mask in obj_masks_filtered)
-            print(f"         ✓ Segmented across {len(obj_masks_filtered)} frames ({pixel_count} total pixels)")
+            print(
+                f"         ✓ Segmented across {len(obj_masks_filtered)} frames ({pixel_count} total pixels)"
+            )
 
     # GRIDIFY all accumulated masks
-    print(f"   Gridifying masks...")
+    print("   Gridifying masks...")
     gridified_masks = gridify_masks(accumulated_masks, grid_rows, grid_cols)
 
     # Convert to uint8 (127 = grey, 255 = background)
-    grey_masks_uint8 = [np.where(mask, 127, 255).astype(np.uint8) for mask in gridified_masks]
+    grey_masks_uint8 = [
+        np.where(mask, 127, 255).astype(np.uint8) for mask in gridified_masks
+    ]
 
     # Write video
-    print(f"   Writing grey_mask.mp4...")
+    print("   Writing grey_mask.mp4...")
     temp_avi = output_dir / "grey_mask_temp.avi"
-    fourcc = cv2.VideoWriter_fourcc(*'FFV1')
-    out = cv2.VideoWriter(str(temp_avi), fourcc, fps, (frame_width, frame_height), isColor=False)
+    fourcc = cv2.VideoWriter_fourcc(*"FFV1")
+    out = cv2.VideoWriter(
+        str(temp_avi), fourcc, fps, (frame_width, frame_height), isColor=False
+    )
 
     for mask in grey_masks_uint8:
         out.write(mask)
@@ -492,15 +547,24 @@ def process_video_grey_masks(video_info: Dict, segmenter: SegmentationModel,
     # Convert to MP4
     grey_mask_mp4 = output_dir / "grey_mask.mp4"
     cmd = [
-        'ffmpeg', '-y', '-i', str(temp_avi),
-        '-c:v', 'libx264', '-qp', '0', '-preset', 'ultrafast',
-        '-pix_fmt', 'yuv444p',
-        str(grey_mask_mp4)
+        "ffmpeg",
+        "-y",
+        "-i",
+        str(temp_avi),
+        "-c:v",
+        "libx264",
+        "-qp",
+        "0",
+        "-preset",
+        "ultrafast",
+        "-pix_fmt",
+        "yuv444p",
+        str(grey_mask_mp4),
     ]
     subprocess.run(cmd, capture_output=True)
     temp_avi.unlink()
 
-    print(f"   ✓ Saved grey_mask.mp4")
+    print("   ✓ Saved grey_mask.mp4")
 
     # Save debug visualization (first frame)
     debug_vis = np.zeros((frame_height, frame_width, 3), dtype=np.uint8)
@@ -511,16 +575,22 @@ def process_video_grey_masks(video_info: Dict, segmenter: SegmentationModel,
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Stage 3a: Generate Grey Masks (Corrected)")
+    parser = argparse.ArgumentParser(
+        description="Stage 3a: Generate Grey Masks (Corrected)"
+    )
     parser.add_argument("--config", required=True, help="Config JSON")
-    parser.add_argument("--segmentation-model", default="sam3", choices=["langsam", "sam3"],
-                       help="Segmentation model")
+    parser.add_argument(
+        "--segmentation-model",
+        default="sam3",
+        choices=["langsam", "sam3"],
+        help="Segmentation model",
+    )
     args = parser.parse_args()
 
     config_path = Path(args.config)
 
     # Load config
-    with open(config_path, 'r') as f:
+    with open(config_path, "r") as f:
         config_data = json.load(f)
 
     if isinstance(config_data, list):
@@ -536,40 +606,41 @@ def main():
 
     if trajectory_path.exists():
         print(f"Loading trajectory data: {trajectory_path.name}")
-        with open(trajectory_path, 'r') as f:
+        with open(trajectory_path, "r") as f:
             trajectory_data = json.load(f)
         print(f"   Loaded {len(trajectory_data)} trajectory(s)")
 
-    print(f"\n{'='*70}")
-    print(f"Stage 3a: Generate Grey Masks (CORRECTED)")
-    print(f"{'='*70}")
+    print(f"\n{'=' * 70}")
+    print("Stage 3a: Generate Grey Masks (CORRECTED)")
+    print(f"{'=' * 70}")
     print(f"Videos: {len(videos)}")
     print(f"Segmentation: {args.segmentation_model.upper()}")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
 
     # Load segmentation model
     segmenter = SegmentationModel(args.segmentation_model)
 
     # Process each video
     for i, video_info in enumerate(videos):
-        video_path = video_info.get('video_path', '')
-        print(f"\n{'─'*70}")
-        print(f"Video {i+1}/{len(videos)}: {Path(video_path).parent.name}")
-        print(f"{'─'*70}")
+        video_path = video_info.get("video_path", "")
+        print(f"\n{'─' * 70}")
+        print(f"Video {i + 1}/{len(videos)}: {Path(video_path).parent.name}")
+        print(f"{'─' * 70}")
 
         try:
             process_video_grey_masks(video_info, segmenter, trajectory_data)
-            print(f"\n✅ Video {i+1} complete!")
+            print(f"\n✅ Video {i + 1} complete!")
 
         except Exception as e:
             print(f"\n❌ Error: {e}")
             import traceback
+
             traceback.print_exc()
             continue
 
-    print(f"\n{'='*70}")
-    print(f"✅ Stage 3a Complete!")
-    print(f"{'='*70}\n")
+    print(f"\n{'=' * 70}")
+    print("✅ Stage 3a Complete!")
+    print(f"{'=' * 70}\n")
 
 
 if __name__ == "__main__":

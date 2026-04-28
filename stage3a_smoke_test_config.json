@@ -1,0 +1,7 @@
+[
+  {
+    "video_path": "sample/trampoline/input_video.mp4",
+    "output_dir": "sample/trampoline/smoke_test_out",
+    "min_grid": 8
+  }
+]
